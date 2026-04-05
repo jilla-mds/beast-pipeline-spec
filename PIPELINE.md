@@ -1,46 +1,57 @@
-# BEAST Pipeline — Full System Spec
+# Multi-Agent Content Pipeline — Full System Spec
+
+## Overview
+
+This system automates the full lifecycle of short-form video content: **source topics -> score for virality -> generate scripts -> package assets -> distribute across platforms**. It uses 7 specialized AI agents orchestrated sequentially, with human approval gates at key decision points.
+
+---
 
 ## 1. Topic Sourcing (TopicMaster)
 
-5 sources feed topics into `topic_brain.db` (SQLite):
+Multiple sources feed topics into a central SQLite database. Each source has a priority weight that influences scoring.
 
-| Source | Priority | Method |
-|--------|----------|--------|
-| Question Bank (1,124 Qs) | 0.5 | One-time bulk import |
-| Pillar Research (7 docs) | 0.6 | One-time bulk import |
-| Mentor Scraper (Google Sheet) | 0.8 | Sheets API, live read |
-| Reddit Brand Bot (VPS SQLite) | 0.9 | Direct DB read from `mined_insights` |
-| Intl Creator Frameworks (100) | 0.7 | Parse + Haiku generates variants |
+### Source Types
 
-**Harvester** runs daily 6AM IST — pulls new topics, batch-classifies via Haiku (pillar, awareness, perspective, business_type), inserts into `topics` table with status `queued`.
+| Source Type | Priority | Method |
+|-------------|----------|--------|
+| Question Bank (bulk) | 0.5 | One-time import |
+| Niche Research Docs | 0.6 | One-time import |
+| CRM / Mentorship Notes | 0.8 | Sheets API, live read |
+| Social Listening (Reddit, etc.) | 0.9 | Direct DB read from scout bot |
+| Creator Framework Library | 0.7 | Parse + Haiku generates variants |
+
+**Harvester** runs daily — pulls new topics, batch-classifies via Haiku (pillar, awareness, perspective, business_type), inserts into `topics` table with status `queued`.
 
 ---
 
 ## 2. Organization — Pillars + Awareness
 
-### 7 Content Pillars
+### Content Pillars
 
-| Pillar | Weight (Launch) | Core Transformation |
-|--------|----------------|---------------------|
-| MONEY | 20% | "Cash is coming in" -> "I know my real profit" |
-| ACQUIRE | 25% | "I'll open and they'll come" -> "I have a system" |
-| EXPERIENCE | 15% | "I sell products" -> "I design experiences" |
-| RETAIN | 10% | "I need new customers" -> "Same ones more often" |
-| PRICING | 10% | "I match their price" -> "I make my price feel worth it" |
-| OPERATIONS | 10% | "I run the shop" -> "The shop runs on systems" |
-| PEOPLE | 10% | "I can't trust anyone" -> "I build people who build this" |
+Define your own pillars — categories that cover your niche. Each pillar has a target weight (% of total content). Weights shift across growth phases.
 
-Weights are phase-based (launch / authority / community) — stored in `pillar_weights` table.
+Example structure:
+
+| Pillar | Weight | Description |
+|--------|--------|-------------|
+| PILLAR_A | 25% | Core topic area |
+| PILLAR_B | 20% | Second priority |
+| PILLAR_C | 15% | Supporting area |
+| ... | ... | ... |
+
+Weights are **phase-based** — you define 2-3 phases (e.g., launch, growth, community) with different weight distributions stored in `pillar_weights` table. Only one phase is active at a time.
 
 ### 3 Awareness Levels
 
-- **INVISIBLE** — owner doesn't know the problem exists
-- **FRUSTRATION** — feels it daily, can't name it
-- **STUCK** — knows the problem, can't move forward
+Topics address audiences at different problem-awareness stages:
+
+- **UNAWARE** — audience doesn't know the problem exists. Hook: surprising revelation, hidden mistake.
+- **PROBLEM_AWARE** — feels the pain daily but can't name the root cause. Hook: root cause exposure, validation.
+- **SOLUTION_AWARE** — knows the problem, stuck on execution. Hook: unlock one specific actionable thing.
 
 ### Clustering
 
-Haiku text comparison (no embeddings), batches of 30 topics, groups by root problem into `clusters` table.
+Haiku text comparison (no embeddings) groups topics by root problem in batches of 30. This prevents producing multiple videos about the same underlying issue.
 
 ---
 
@@ -75,95 +86,96 @@ Manual priority: +0.5 (boost) or -0.3 (deprioritize).
 
 ### Phase 1: Strategy Gate (Topic -> Scripts)
 
-#### Step 1 — NADAI (Style DNA Selector)
+#### Agent 1 — STYLE SELECTOR
 
 - Input: topic's pillar + awareness level
-- Looks up `style-config.json` (pillar x awareness -> tags like `strong-hooks`, `emotional`, `practical`)
-- Scores creator profiles by tag overlap, picks top 2-3
-- Layers them on creator's baseline voice (never overrides baseline)
-- Output: ~300-word STYLE DNA text block
+- Looks up a config mapping (pillar x awareness -> style tags like `strong-hooks`, `emotional`, `practical`)
+- Scores reference creator profiles by tag overlap, picks top 2-3
+- Layers them on your baseline voice profile (never overrides baseline)
+- Output: ~300-word STYLE DNA text block passed to all downstream agents
 
-#### Step 2 — THRIVA (Script Architect)
+#### Agent 2 — SCRIPT ARCHITECT
 
 - Input: topic + Style DNA
-- Generates 3 variations in 3 mandatory formats:
-  - V1: Counter-Intuitive (flip a belief)
-  - V2: Story-First (vivid anecdote -> insight)
-  - V3: Data-Shock (surprising stat -> explain)
-- Each variation has Part A (narrative) + Part B (shooting script with markers)
-- Shooting script markers: `[TEXT HOOK]`, `[VISUAL]`, `[SPEAK]`, `[B-ROLL]`, `[CUT BACK]`, `[ACTION STEPS]`, `[CTA]`
-- Hard rules: 1 relatable analogy, 1 personal authority line, energy spike in first `[SPEAK]`, active CTA with question, 3 solution steps
+- Generates **3 variations** in 3 mandatory formats:
+  - V1: **Counter-Intuitive** (flip a belief)
+  - V2: **Story-First** (vivid anecdote -> insight)
+  - V3: **Data-Shock** (surprising stat -> explain)
+- Each variation has:
+  - Part A: Narrative summary (why this angle works)
+  - Part B: Shooting script with markers: `[TEXT HOOK]`, `[VISUAL]`, `[SPEAK]`, `[B-ROLL]`, `[CUT BACK]`, `[ACTION STEPS]`, `[CTA]`
+- Hard rules: 1 relatable analogy, 1 personal authority line, energy spike in first `[SPEAK]`, active CTA with question, 3 actionable solution steps
 
-#### Step 3 — KELLA (Direct Response Strategist)
+#### Agent 3 — SCRIPT OPTIMIZER
 
-- Input: all 3 Thriva variations + Style DNA
+- Input: all 3 variations + Style DNA
 - Per variation, produces sections A-F:
-  - A: Quick diagnosis (5-7 bullets on what's weak)
-  - B: Rewritten script (spoken language, max 100 words)
-  - C: Why better (3-5 bullets)
-  - **D: Teleprompter script** (70-84 words, energy markers)
-  - E: Visual hook (first 3 seconds)
-  - F: Music & mood direction
-- Energy markers: `[PUNCH]`, `[STEADY]`, `[DROP]`, `[RISE]`
-- Teleprompter rules: conversational tone (not telegraphic), CAPS only for emphasis, preserve natural fillers
+  - **A:** Quick diagnosis (5-7 bullets on what's weak)
+  - **B:** Rewritten script (spoken language, max 100 words)
+  - **C:** Why better (3-5 bullets)
+  - **D: Teleprompter script** (70-84 words with energy markers)
+  - **E:** Visual hook (first 3 seconds design)
+  - **F:** Music & mood direction
+- Energy markers: `[PUNCH]` (high energy), `[STEADY]` (default), `[DROP]` (soft/intimate), `[RISE]` (building)
+- Teleprompter rules: conversational tone (not telegraphic), CAPS only for emphasis, preserve natural fillers, one idea per line
 
-#### Step 4 — SENSEI (Variation Evaluator)
+#### Agent 4 — VARIATION EVALUATOR
 
-- Scores all 3 on 5 criteria:
+- Scores all 3 variations on 5 weighted criteria:
   - Audience Resonance (30%)
   - Hook Strength (25%)
   - Story Clarity (20%)
   - Action Quality (15%)
   - Performance Signal (10%)
 - Ranks 1-2-3 with rationale
-- **Does NOT pick** — sends rankings to user, user picks winner via Telegram or dashboard
+- **Does NOT pick** — sends rankings to user. User picks winner via Telegram or dashboard.
 
-### Phase 2: Packaging (Auto after user picks)
+### Phase 2: Packaging (Auto-runs after user picks)
 
-#### Step 5 — TUBEREEL (Social Media Analyst)
+#### Agent 5 — SOCIAL MEDIA ANALYST
 
 - Input: chosen variation's teleprompter + text hook
 - Output:
-  - Instagram caption (8-12 lines, 5 hashtags)
-  - Pinned first comment (question trigger)
+  - Instagram caption (8-12 lines, hashtags)
+  - Pinned first comment (question trigger for engagement)
   - 3 YouTube Shorts title options (under 60 chars)
   - YouTube description (full English for SEO, 8-12 lines)
   - 8-10 SEO keywords
 
-#### Step 6 — BEROLLER (Visual Director)
+#### Agent 6 — VISUAL DIRECTOR
 
 - Input: chosen teleprompter script
-- Output: 9-10 B-roll scene prompts (3-6 seconds each, 9:16 vertical)
+- Output: 9-10 B-roll scene prompts (3-6 seconds each, vertical 9:16)
 - Scene 1 is the HOOK (scroll-stopper, emotional punch)
-- Per scene: exact script line covered, video prompt, camera type, location context, style, duration
-- Aesthetic: phone-recorded look, clean businesses, local context
+- Per scene: exact script line covered, video prompt, camera type (static/handheld/POV/pan), location context, style notes, duration
+- Aesthetic: phone-recorded look, clean environments, local context
 
-#### Step 7 — THUMBSTER (Thumbnail Director)
+#### Agent 7 — THUMBNAIL DIRECTOR
 
-- Generates 5-6 text hook variations (3-6 words)
+- Generates 5-6 text hook variations (3-6 words each)
 - User picks one, then generates ONE thumbnail blueprint (best CTR lever)
-- Design rules: max 3 elements (face + text hook + one graphic), local background, specific color palette
-- Outputs a prompt for AI image generation
+- Design rules: max 3 elements (face + text hook + one graphic element), real-world background, specific color palette
+- Outputs a single-line prompt for AI image generation tools
 
 ### Phase 3: Distribution (Content Waterfall)
 
-**DISTRIBUTOR** converts the script into 5 platform versions — all as drafts, never auto-publish:
+A **DISTRIBUTOR** agent converts the original script into platform-specific versions — all saved as drafts, never auto-published:
 
 | Platform | Length | Style |
 |----------|--------|-------|
 | Blog | 600-1000 words | Personal story-driven, opens with anecdote |
 | Medium | 800-1200 words | Different angle than blog, deeper exploration |
-| LinkedIn | 150-200 words | Hook line 1, one insight, question CTA |
+| LinkedIn | 150-200 words | Hook in line 1, one insight, question CTA |
 | Twitter/X | 260 chars max | Single tweet, sharpest insight |
 | Threads | 200-300 chars | 3-5 lines, pure text, no hashtags |
 
-Voice rules across all: humble tone, skip apostrophes, no AI-sounding words (delve, crucial, pivotal, game-changer), ".." for pauses.
+Each platform has its own voice rules and constraints. A cron job checks for scheduled drafts and publishes them at the set time.
 
 ---
 
 ## 5. Database Schema
 
-### `sources` table
+### `sources`
 
 ```sql
 CREATE TABLE sources (
@@ -173,7 +185,7 @@ CREATE TABLE sources (
 );
 ```
 
-### `pillars` table
+### `pillars`
 
 ```sql
 CREATE TABLE pillars (
@@ -184,19 +196,19 @@ CREATE TABLE pillars (
 );
 ```
 
-### `pillar_weights` table
+### `pillar_weights`
 
 ```sql
 CREATE TABLE pillar_weights (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    phase       TEXT NOT NULL,          -- launch, authority, community
+    phase       TEXT NOT NULL,          -- e.g. launch, growth, community
     pillar_id   INTEGER REFERENCES pillars(id),
     weight      REAL NOT NULL,
     active      BOOLEAN DEFAULT 0
 );
 ```
 
-### `topics` table (core)
+### `topics` (core)
 
 ```sql
 CREATE TABLE topics (
@@ -206,8 +218,8 @@ CREATE TABLE topics (
     source_id                   INTEGER REFERENCES sources(id),
     pillar_id                   INTEGER REFERENCES pillars(id),
     awareness                   TEXT,       -- unaware, problem_aware, solution_aware
-    perspective                 TEXT,       -- owner_voice, consumer_voice, framework_voice, mentee_voice, trend_voice
-    business_type               TEXT,       -- restaurant, retail, salon, universal
+    perspective                 TEXT,       -- e.g. owner_voice, consumer_voice, framework_voice
+    business_type               TEXT,       -- your niche segments
     cluster_id                  INTEGER REFERENCES clusters(id),
 
     -- Scoring
@@ -219,19 +231,19 @@ CREATE TABLE topics (
     composite_score             REAL DEFAULT 0.0,
 
     -- Lifecycle
-    status                      TEXT DEFAULT 'queued',  -- queued -> scored -> marked -> in_beast -> published -> archived
+    status                      TEXT DEFAULT 'queued',
+    -- queued -> scored -> marked -> in_pipeline -> published -> archived
 
     -- Metadata
     creator_name                TEXT,
     framework_name              TEXT,
-    tamil_hook                  TEXT,
+    hook_text                   TEXT,
     source_url                  TEXT,
-    mentee_id                   TEXT,
 
     -- Timestamps
     ingested_at                 DATETIME DEFAULT CURRENT_TIMESTAMP,
     scored_at                   DATETIME,
-    sent_to_beast_at            DATETIME,
+    sent_to_pipeline_at         DATETIME,
     published_at                DATETIME,
 
     -- Manual override
@@ -245,7 +257,7 @@ CREATE INDEX idx_topics_composite ON topics(composite_score DESC);
 CREATE INDEX idx_topics_cluster ON topics(cluster_id);
 ```
 
-### `clusters` table
+### `clusters`
 
 ```sql
 CREATE TABLE clusters (
@@ -259,7 +271,7 @@ CREATE TABLE clusters (
 );
 ```
 
-### `publish_log` table
+### `publish_log`
 
 ```sql
 CREATE TABLE publish_log (
@@ -275,7 +287,7 @@ CREATE INDEX idx_publish_pillar ON publish_log(pillar_id);
 CREATE INDEX idx_publish_date ON publish_log(published_at);
 ```
 
-### `creator_frameworks` table
+### `creator_frameworks`
 
 ```sql
 CREATE TABLE creator_frameworks (
@@ -284,7 +296,7 @@ CREATE TABLE creator_frameworks (
     framework_name  TEXT NOT NULL,
     pillar_id       INTEGER REFERENCES pillars(id),
     core_concept    TEXT NOT NULL,
-    tamil_hook      TEXT,
+    hook_text       TEXT,
     used_count      INTEGER DEFAULT 0,
     last_used_at    DATETIME
 );
@@ -306,7 +318,7 @@ CREATE TABLE pipeline_runs (
 CREATE TABLE pipeline_steps (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id          TEXT REFERENCES pipeline_runs(run_id),
-    step            TEXT,           -- nadai, thriva, kella, sensei, tubereel, beroller, thumbster
+    step            TEXT,           -- style_selector, script_architect, script_optimizer, evaluator, social_analyst, visual_director, thumbnail_director
     step_order      INTEGER,
     status          TEXT,           -- pending, running, completed, failed, skipped
     started_at      DATETIME,
@@ -317,24 +329,22 @@ CREATE TABLE pipeline_steps (
 
 CREATE TABLE pipeline_outputs (
     run_id                  TEXT REFERENCES pipeline_runs(run_id),
-    nadai_blend             TEXT,       -- JSON
-    thriva_v1               TEXT,       -- JSON
-    thriva_v2               TEXT,
-    thriva_v3               TEXT,
-    kella_v1                TEXT,       -- JSON
-    kella_v2                TEXT,
-    kella_v3                TEXT,
-    sensei_scores           TEXT,       -- JSON
-    sensei_pick             TEXT,
+    style_dna               TEXT,       -- JSON
+    script_v1               TEXT,       -- JSON
+    script_v2               TEXT,
+    script_v3               TEXT,
+    optimized_v1            TEXT,       -- JSON
+    optimized_v2            TEXT,
+    optimized_v3            TEXT,
+    eval_scores             TEXT,       -- JSON
+    user_pick               TEXT,
     teleprompter            TEXT,
     teleprompter_edited     INTEGER DEFAULT 0,
-    tubereel_output         TEXT,       -- JSON
-    beroller_prompts        TEXT,       -- JSON
-    thumbster_output        TEXT,       -- JSON
-    shirt_color             TEXT,
+    social_output           TEXT,       -- JSON
+    broll_prompts           TEXT,       -- JSON
+    thumbnail_output        TEXT,       -- JSON
     posted_date             DATE,
-    youtube_url             TEXT,
-    instagram_url           TEXT
+    video_urls              TEXT        -- JSON
 );
 ```
 
@@ -342,14 +352,14 @@ CREATE TABLE pipeline_outputs (
 
 ## 6. API Endpoints
 
-Base URL: `http://<VPS_IP>:<PORT>/api/topicmaster`
+Base URL: `http://<VPS_IP>:<PORT>/api/topics`
 
 ```
 GET  /queue?pillar=&status=&limit=20    — Ranked topic queue
 GET  /topic/:id                         — Topic details
 GET  /balance                           — Pillar coverage stats
 GET  /stats                             — Queue stats
-POST /pick              { count: N }    — Pick top N topics with diversity constraints
+POST /pick              { count: N }    — Pick top N with diversity constraints
 POST /harvest                           — Manual harvest trigger
 POST /phase             { phase: '...'} — Switch pillar weight phase
 
@@ -370,60 +380,53 @@ GET  /pipeline                          — List all pipeline runs
 |-----------|--------|
 | VPS | Ubuntu, Node.js, PM2 managed |
 | Database | SQLite (topic_brain.db, queue.db) |
-| AI (content) | Claude CLI (`claude -p`) — zero API cost |
-| AI (classify) | Claude Haiku for classification, clustering |
+| AI (content) | Claude CLI (`claude -p`) — zero cost on Max plan |
+| AI (classify) | Claude Haiku for classification + clustering |
 | Dashboard | Express.js web app |
 | Vault | Obsidian, git-synced to VPS |
 | Notifications | Telegram bot |
-| Scripts saved as | `beast-scripts/row-{id}-{slug}.md` in vault |
-| Batch mode | Processes topics one by one, 5-min pick timeout then skip |
-| Beast-runner | PM2 process, watches every 30s |
+| Scripts saved as | Markdown files in vault |
+| Batch mode | Processes topics one by one, configurable pick timeout |
+| Runner | PM2 process, polls every 30s |
 
-### Cron Schedule
+### Cron Schedule (customize to your timezone)
 
-| Time (IST) | Job |
-|------------|-----|
-| 6:00 AM | TopicMaster Harvester |
-| 6:30 AM | AI Digest |
-| 8:00 AM | Scout morning crawl |
-| 8:00 PM | Scout evening crawl |
+| Time | Job |
+|------|-----|
+| 6:00 AM | Harvester (pull from all sources) |
+| 7:00 AM | Daily digest / notifications |
 | Every 30 min | Batch scheduler checks for pending runs |
-| Every 30 min | Distributor publishes pending drafts |
+| Every 30 min | Distributor publishes scheduled drafts |
 
 ---
 
-## 8. Style DNA System (Nadai)
+## 8. Style DNA System
 
-### style-config.json structure
+### Config Structure
 
-Maps pillar x awareness -> style tags:
+A JSON config maps pillar x awareness -> style tags:
 
 ```json
 {
-  "ACQUIRE": {
-    "INVISIBLE": ["strong-hooks", "shock-hooks", "data-heavy", "high-energy"],
-    "FRUSTRATION": ["emotional", "storytelling", "question-hooks", "conversational"],
-    "STUCK": ["practical", "calm-authority", "educational", "strong-hooks"]
-  },
-  "MONEY": {
-    "INVISIBLE": ["strong-hooks", "shock-hooks", "data-heavy", "high-energy"],
-    "FRUSTRATION": ["emotional", "question-hooks", "conversational", "storytelling"],
-    "STUCK": ["practical", "calm-authority", "educational", "analytical"]
+  "PILLAR_A": {
+    "UNAWARE": ["strong-hooks", "shock-hooks", "data-heavy", "high-energy"],
+    "PROBLEM_AWARE": ["emotional", "storytelling", "question-hooks", "conversational"],
+    "SOLUTION_AWARE": ["practical", "calm-authority", "educational", "analytical"]
   }
 }
 ```
 
-### Creator profiles
+### Creator Profiles
 
-Each profile JSON contains: `auto_tags`, `hooks`, `energy`, `signature_phrases`, `viral_patterns`.
+Each profile is a JSON file containing: `auto_tags`, `hooks`, `energy`, `signature_phrases`, `viral_patterns`.
 
-Nadai process:
-1. Look up required tags from style-config.json
-2. Score each creator profile by tag overlap (min 2 tags)
+**Style Selector process:**
+1. Look up required tags from config
+2. Score each creator profile by tag overlap (min 2 tags to qualify)
 3. Select top 2-3 matching creators
-4. Load baseline voice as foundation
+4. Load your baseline voice as foundation
 5. Generate STYLE DNA text block (< 300 words)
-6. Pass to Thriva, Kella, Sensei as context
+6. Pass to all downstream agents as context
 
 ---
 
@@ -432,85 +435,98 @@ Nadai process:
 ```
 [TopicMaster]
     |
-    |-- Harvest (5 sources, daily 6AM)
-    |-- Classify (Haiku batch)
-    |-- Cluster (Haiku text comparison)
+    |-- Harvest (multiple sources, daily)
+    |-- Classify (Haiku batch — pillar, awareness, perspective)
+    |-- Cluster (Haiku text comparison — group by root problem)
     |-- Score (5-signal composite)
-    |-- Pick (diversity-constrained)
+    |-- Pick (diversity-constrained selection)
     |
     v
-[BEAST Phase 1: Strategy]
+[Phase 1: Strategy]
     |
-    |-- Nadai   -> Style DNA
-    |-- Thriva  -> 3 script variations (counter-intuitive, story, data-shock)
-    |-- Kella   -> Polish all 3 (sections A-F, teleprompter scripts)
-    |-- Sensei  -> Rank 1-2-3
+    |-- Style Selector    -> Style DNA
+    |-- Script Architect  -> 3 variations (counter-intuitive, story, data-shock)
+    |-- Script Optimizer  -> Polish all 3 (sections A-F, teleprompter scripts)
+    |-- Evaluator         -> Rank 1-2-3
     |
-    |  ** USER PICKS WINNER **
-    |
-    v
-[BEAST Phase 2: Packaging]
-    |
-    |-- TubeReel   -> Captions, titles, descriptions, SEO
-    |-- BEroller   -> 9-10 B-roll scene prompts
-    |-- Thumbster  -> Thumbnail blueprint + AI image prompt
+    |  ** HUMAN APPROVAL GATE — user picks winner **
     |
     v
-[BEAST Phase 3: Distribution]
+[Phase 2: Packaging]
     |
-    |-- Blog (600-1000 words)
-    |-- Medium (800-1200 words)
-    |-- LinkedIn (150-200 words)
-    |-- Twitter/X (260 chars)
-    |-- Threads (200-300 chars)
-    |
-    |  All as DRAFTS — never auto-publish
+    |-- Social Analyst     -> Captions, titles, descriptions, SEO
+    |-- Visual Director    -> 9-10 B-roll scene prompts
+    |-- Thumbnail Director -> Thumbnail blueprint + AI image prompt
     |
     v
-[Publish Log -> Re-scores TopicMaster]
+[Phase 3: Distribution]
+    |
+    |-- Blog, Medium, LinkedIn, Twitter/X, Threads
+    |-- All as DRAFTS — never auto-publish
+    |-- Scheduled publishing via cron
+    |
+    v
+[Publish Log -> feedback into Scorer]
 ```
 
 ---
 
-## 10. Environment Variables
+## 10. Configuration Points
+
+To adapt this system to your niche, customize:
+
+1. **Pillars** — define your content categories and target weights per growth phase
+2. **Awareness levels** — adjust the 3 levels to match your audience's journey
+3. **Sources** — plug in your own topic sources (subreddits, newsletters, CRM, etc.)
+4. **Style profiles** — create your baseline voice + reference creator profiles
+5. **Style config** — map pillar x awareness to style tags
+6. **Script rules** — adjust word count limits, language mix, energy markers
+7. **Distribution platforms** — add/remove platforms and their constraints
+8. **Cron schedule** — set harvest and publish times for your timezone
+9. **Voice rules** — define banned words, tone guidelines, formatting rules
+10. **Scoring weights** — tune the 5 signals to prioritize what matters for your content
+
+---
+
+## 11. Environment Variables
 
 ```env
 # VPS
-VPS_HOST=<your-vps-ip>
+VPS_HOST=
 VPS_PORT=9090
 
 # Telegram
-TELEGRAM_BOT_TOKEN=<your-bot-token>
-TELEGRAM_CHAT_ID=<your-chat-id>
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 
-# Google Sheets (for Mentor Scraper source)
-GOOGLE_SHEETS_ID=<your-sheet-id>
-GOOGLE_SHEETS_CREDENTIALS=<path-to-credentials.json>
+# Google Sheets (if using sheet-based sources)
+GOOGLE_SHEETS_ID=
+GOOGLE_SHEETS_CREDENTIALS=
 
 # Dashboard Auth
-DASHBOARD_USERNAME=<your-username>
-DASHBOARD_PASSWORD=<your-password>
+DASHBOARD_USERNAME=
+DASHBOARD_PASSWORD=
 
 # Vault
-VAULT_PATH=<path-to-obsidian-vault>
-VAULT_GIT_REMOTE=<git-remote-url>
+VAULT_PATH=
+VAULT_GIT_REMOTE=
 ```
 
 ---
 
-## 11. Key Rules & Constraints
+## 12. Key Rules
 
 ### Pipeline Rules
-- NEVER skip a step — every topic through all phases
-- NEVER fabricate data — report errors honestly
-- NEVER auto-publish — human approval required at pick step and publish step
-- If Sensei fails/times out: default to V1 with note
-- Scripts saved to vault BEFORE Telegram notify
-- TopicMaster DB is single source of truth
+- Never skip a step — every topic goes through all phases
+- Never fabricate data — report errors honestly
+- Never auto-publish — human approval required at pick step and publish step
+- If evaluator fails/times out: default to V1 with note
+- Scripts saved to vault BEFORE notifications sent
+- Topic database is single source of truth
 
 ### Script Quality Rules
 - Max 100 words (aim 70-80) for teleprompter
-- Min 3 action steps (practical, doable TODAY)
+- Min 3 action steps (practical, doable today)
 - Min 1 relatable analogy per variation
 - Min 1 personal authority line
 - Min 1 active CTA with question (not passive)
@@ -519,8 +535,7 @@ VAULT_GIT_REMOTE=<git-remote-url>
 
 ### Voice Quality Rules
 - Conversational, not telegraphic
-- CAPS for emphasis ONLY (not every other word)
+- CAPS for emphasis only (not every other word)
 - Preserve natural fillers (intentional voice markers)
 - No jargon, no hype, no coach-speak
 - One idea per line
-- Respectful forms only

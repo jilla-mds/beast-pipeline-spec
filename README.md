@@ -1,6 +1,8 @@
-# BEAST Content Pipeline
+# Multi-Agent Content Pipeline
 
-A multi-agent content production system that sources topics, scores them for virality, generates Tamil business education scripts through 7 AI agents, and distributes English adaptations across 5 platforms.
+A multi-agent content production system that sources topics, scores them for virality, generates scripts through 7 AI agents, and distributes adaptations across multiple platforms.
+
+Built to run entirely on Claude CLI (`claude -p`) — zero API cost on Max plan.
 
 ## Architecture
 
@@ -8,10 +10,10 @@ A multi-agent content production system that sources topics, scores them for vir
 TopicMaster (sourcing + scoring)
     |
     v
-BEAST Pipeline (7 agents)
+Content Pipeline (7 agents)
     |
     v
-Distributor (5-platform content waterfall)
+Distributor (multi-platform content waterfall)
 ```
 
 ## Quick Start
@@ -21,13 +23,17 @@ See [PIPELINE.md](PIPELINE.md) for the full system spec — covering topic sourc
 ## Stack
 
 - **Runtime:** Node.js on VPS (PM2 managed)
-- **Database:** SQLite (`topic_brain.db`, `queue.db`)
-- **AI:** Claude CLI (`claude -p`) for all content generation (zero API cost)
+- **Database:** SQLite
+- **AI:** Claude CLI (`claude -p`) for all content generation
 - **AI (lightweight):** Claude Haiku for classification, clustering, scoring
-- **Dashboard:** Express.js, port 9090
+- **Dashboard:** Express.js
 - **Vault:** Obsidian (git-synced to VPS)
 - **Notifications:** Telegram bot
 
+## Customization
+
+The system is designed around pluggable content pillars, awareness levels, style profiles, and distribution platforms. See the `## Configuration Points` section in PIPELINE.md to adapt it to your niche.
+
 ## License
 
-Private — not for redistribution.
+MIT
